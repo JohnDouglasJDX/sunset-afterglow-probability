@@ -1,0 +1,60 @@
+{
+  "exp_mean_check": {
+    "2.0": [
+      0.49834703183350393,
+      0.5
+    ],
+    "0.5": [
+      2.0057652199937412,
+      2.0
+    ]
+  },
+  "horizon": {
+    "airmass": 38.0,
+    "tau_red": 1.404798157017909,
+    "tau_blue": 8.225381191891483,
+    "surv_red": 0.24541658706984323,
+    "surv_blue": 0.00026777025785976806,
+    "red_to_blue_ratio": 916.5192170011969
+  },
+  "lln": {
+    "N": 50000,
+    "red_final_estimate": 0.2452,
+    "red_limit": 0.24541658706984323,
+    "blue_final_estimate": 0.00026,
+    "blue_limit": 0.00026777025785976806,
+    "red_final_abs_error": 0.00021658706984323262,
+    "blue_final_abs_error": 7.770257859768086e-06
+  },
+  "random_walk": {
+    "red 700 nm": {
+      "tau": 1.404798157017909,
+      "transmitted": 23394,
+      "absorbed": 583,
+      "backscattered": 16023,
+      "stuck": 0
+    },
+    "blue 450 nm": {
+      "tau": 8.225381191891483,
+      "transmitted": 6624,
+      "absorbed": 3111,
+      "backscattered": 30265,
+      "stuck": 0
+    },
+    "n_photons": 40000,
+    "albedo": 0.99
+  },
+  "sunset_color_rgb_horizon": [
+    1.0,
+    0.422,
+    0.0
+  ],
+  "joint": {
+    "p_afterglow": 0.2,
+    "weibull_shape": 1.8,
+    "weibull_scale": 0.12,
+    "p_afterglow_given_high_humidity": 0.6807884154782571,
+    "p_afterglow_given_low_humidity": 0.0,
+    "corr_PT": -0.5
+  }
+}
