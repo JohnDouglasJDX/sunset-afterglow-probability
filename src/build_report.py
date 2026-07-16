@@ -8,16 +8,23 @@ import json
 import os
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-
-from reportlab.lib.pagesizes import letter
-from reportlab.lib.units import inch
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER
 from reportlab.lib import colors
-from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Image,
-                                Table, TableStyle, PageBreak, HRFlowable)
+from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import inch
+from reportlab.platypus import (
+    HRFlowable,
+    Image,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FIG = os.path.join(HERE, "figures")
@@ -134,7 +141,7 @@ P("<b>Abstract.</b> This report recasts the formation of a sunset afterglow &mda
   "analytic Exponential and Beer&ndash;Lambert results, empirically verifies the "
   "Law of Large Numbers and the Central Limit Theorem error scaling, and &mdash; "
   "as an extension &mdash; performs full-spectrum transport with CIE colour "
-  "rendering to reconstruct the <i>actual perceived colour</i> of the setting "
+  "rendering to estimate the <i>display-normalized chromaticity</i> of the setting "
   f"Sun (sRGB&nbsp;&approx;&nbsp;[{rgb[0]:.2f},&nbsp;{rgb[1]:.2f},&nbsp;{rgb[2]:.2f}], a "
   "vivid orange&ndash;red) as the line of sight sweeps from zenith to horizon.")
 
@@ -230,7 +237,7 @@ P("Whether a vivid afterglow actually forms depends on the state of the "
   "<i>&rho;</i>&nbsp;&prop;&nbsp;<i>P/T</i> modulates the Rayleigh depth, while "
   "aerosol turbidity <i>&tau;</i><sub>aer</sub> &mdash; the haze that physically "
   "catches and reddens the light &mdash; is an independent <b>Weibull</b> "
-  "variable, a standard heavy-ish-tailed model for atmospheric loading:")
+  "variable used here as a flexible positive distribution for atmospheric loading:")
 S.append(eq_flowable(r"f(t;k,\lambda)=\frac{k}{\lambda}\left(\frac{t}{\lambda}"
                      r"\right)^{k-1}e^{-(t/\lambda)^{k}},\quad "
                      rf"k={jt['weibull_shape']},\;\lambda={jt['weibull_scale']}.",
@@ -239,16 +246,15 @@ P("From these a <i>redness index</i> is built &mdash; the surplus of surviving r
   "over blue, weighted by the red flux still available to illuminate a cloud deck "
   "&mdash; and gate it by a logistic function of humidity (the cloud/moisture that "
   "reflects the glow). The afterglow is declared when this joint score exceeds a "
-  "threshold. This makes &ldquo;a good sunset&rdquo; an explicit event whose "
-  "probability can be estimated by Monte&nbsp;Carlo.")
-
-S.append(PageBreak())
+  f"fixed threshold ({jt['score_threshold']:.2f}). This threshold is an explicit "
+  "teaching assumption, not one fitted to observed sunsets; the resulting event "
+  "rate must therefore not be interpreted as a weather forecast.")
 
 # =========================================================================== #
 #  SECTION 3
 # =========================================================================== #
 S.append(Paragraph("3.&nbsp;&nbsp;Simulation Methodology &amp; Pseudocode", h1))
-P("The simulator (Python&nbsp;/&nbsp;NumPy, single reproducible PRNG stream) "
+P("The simulator (Python&nbsp;/&nbsp;NumPy, independent reproducible PRNG streams) "
   "instantiates large ensembles of independent photons and propagates each as a "
   "random walk. Two estimators are run: a <i>direct-transmission</i> estimator "
   "that targets the analytic <i>e</i><sup>&minus;&tau;</sup> for clean validation, "
@@ -356,14 +362,17 @@ P("Fig.&nbsp;3 (top) tracks the running Monte&nbsp;Carlo estimator "
   f"{lln['red_final_abs_error']:.1e} and {lln['blue_final_abs_error']:.1e}. This is "
   "the <b>Law of Large Numbers</b> made visible. The shaded band is the "
   "Central-Limit &plusmn;2&nbsp;standard-error envelope "
-  "&radic;(<i>p</i>(1&minus;<i>p</i>)/N); the bottom log&ndash;log panel confirms the "
-  "absolute error tracks the predicted <b>N<sup>&minus;1/2</sup></b> slope. The "
+  "&radic;(<i>p</i>(1&minus;<i>p</i>)/N). The bottom panel estimates RMSE over "
+  f"{lln['rmse_replicates']} independent repetitions at each sample size; fitted "
+  f"log&ndash;log slopes of {lln['red_rmse_loglog_slope']:.2f} (red) and "
+  f"{lln['blue_rmse_loglog_slope']:.2f} (blue) track the predicted "
+  "<b>N<sup>&minus;1/2</sup></b> law. The "
   "estimator's precision thus improves only as the square root of effort &mdash; the "
   "central practical cost of Monte&nbsp;Carlo.")
 fig_block("fig3_lln.png",
           "Fig.&nbsp;3&nbsp;&mdash; Top: running survival estimators converging to "
           "<i>e</i><sup>&minus;&tau;</sup> with the CLT &plusmn;2&thinsp;SE band. "
-          "Bottom: |error| vs N on log&ndash;log with the N<sup>&minus;1/2</sup> "
+          "Bottom: repeated-run RMSE vs N with the N<sup>&minus;1/2</sup> "
           "reference.", width=4.6*inch)
 
 S.append(Paragraph("4.3&nbsp;&nbsp;Multiple scattering: the collision decision tree", h2))
@@ -374,8 +383,9 @@ P("Fig.&nbsp;4 reports the full random walk with scattering and absorption. The 
   "terminal outcomes are starkly wavelength-dependent: "
   f"{rt:.0f}% of red photons are ultimately transmitted toward the observer versus "
   f"only {bt:.0f}% of blue, while {bb:.0f}% of blue photons are back-scattered to "
-  "space &mdash; this back-scattered blue is precisely the light that makes the "
-  "<i>daytime</i> sky blue, the same physics seen from the other side. The sample "
+  "space. The same wavelength-selective scattering mechanism contributes to the "
+  "blue daytime sky, although this one-dimensional model cannot predict angular "
+  "sky radiance. The sample "
   "trajectories (Fig.&nbsp;4b) show the characteristic random walk: most blue "
   "photons reverse and escape before threading the full optical thickness "
   f"<i>&tau;</i>&nbsp;=&nbsp;{rw_blue['tau']:.1f}.")
@@ -384,41 +394,40 @@ fig_block("fig4_random_walk.png",
           "multiple-scattering random walk. (b) Representative blue-photon "
           "trajectories in optical-depth space.", width=5.3*inch)
 
-S.append(Paragraph("4.4&nbsp;&nbsp;Optimization &mdash; reconstructing the true sunset colour", h2))
+S.append(Paragraph("4.4&nbsp;&nbsp;Extension &mdash; direct-beam chromaticity", h2))
 P("Beyond the brief, the two-colour model is extended to the <i>full visible "
   "spectrum</i>. Treating sunlight as a 5778&nbsp;K blackbody source "
   "<i>I</i><sub>0</sub>(<i>&lambda;</i>), each wavelength is transmitted through "
   "<i>e</i><sup>&minus;&tau;(&lambda;,m)</sup>, the result is integrated against the "
   "<b>CIE&nbsp;1931</b> colour-matching functions, and the XYZ result is converted to "
-  "sRGB to obtain the perceived colour of the direct beam. Fig.&nbsp;5 shows the "
+  "sRGB to obtain a display-normalized chromaticity of the direct beam. Fig.&nbsp;5 shows the "
   "transmitted spectrum progressively losing its blue end as airmass grows, and the "
   "rendered swatches march from near-white at the zenith to a vivid orange&ndash;red "
   f"(sRGB&nbsp;&approx;&nbsp;[{rgb[0]:.2f},&nbsp;{rgb[1]:.2f},&nbsp;{rgb[2]:.2f}]) at the "
-  "horizon. The model thus predicts not merely &ldquo;red wins&rdquo; but the "
-  "specific hue of the sunset directly from the probability of photon survival.")
+  "horizon. Because brightness is normalized and ozone, multiple scattering, "
+  "camera exposure, and visual adaptation are omitted, these swatches illustrate "
+  "the model's hue shift rather than a calibrated perceived colour.")
 fig_block("fig5_spectral_color.png",
           "Fig.&nbsp;5&nbsp;&mdash; Full-spectrum transmission (top) and the "
           "resulting CIE-rendered colour of the direct solar beam from zenith "
           "(m=0) to horizon (m=38).", width=5.1*inch)
 
-S.append(Paragraph("4.5&nbsp;&nbsp;Joint weather model and the afterglow probability", h2))
+S.append(Paragraph("4.5&nbsp;&nbsp;Joint weather score and sensitivity", h2))
 P("Finally, Fig.&nbsp;6 samples the correlated weather vector "
   "<b>V</b>&nbsp;=&nbsp;[<i>P,T,H</i>] together with Weibull turbidity and evaluates "
   "the joint-threshold afterglow event. The marginal turbidity (6b) matches the "
-  "target Weibull density. Marking the upper quintile of the redness score as an "
-  f"afterglow gives an unconditional probability <i>P</i>(afterglow)&nbsp;=&nbsp;"
-  f"{jt['p_afterglow']:.2f}. Crucially, this probability is strongly "
-  "<i>conditional</i> on humidity (6d): "
-  f"<i>P</i>(afterglow&thinsp;|&thinsp;H&gt;75%)&nbsp;=&nbsp;"
-  f"{jt['p_afterglow_given_high_humidity']:.2f} versus essentially "
-  f"{jt['p_afterglow_given_low_humidity']:.2f} for dry air &mdash; quantifying the "
-  "folklore that the most spectacular sunsets follow moist, cloud-bearing weather. "
-  "The dependence is a direct, visual instance of conditional probability "
-  "reshaping a marginal one.")
+  "target Weibull density. Applying the fixed teaching threshold "
+  f"{jt['score_threshold']:.2f} produces an illustrative event rate of "
+  f"{jt['illustrative_event_rate']:.2f}. The rate is higher for humid scenarios "
+  f"({jt['illustrative_rate_given_high_humidity']:.2f} above 75% humidity versus "
+  f"{jt['illustrative_rate_given_low_humidity']:.2f} below 45%) because humidity "
+  "is explicitly included in the score. This is a sensitivity demonstration, "
+  "not evidence that the model forecasts real sunsets. Calibration would require "
+  "labelled observations matched to atmospheric measurements.")
 fig_block("fig6_joint.png",
           "Fig.&nbsp;6&nbsp;&mdash; (a) Correlated [P,T] coloured by afterglow "
           "score; (b) Weibull turbidity vs analytic PDF; (c) score distribution "
-          "and decision threshold; (d) afterglow probability conditioned on "
+          "and fixed decision threshold; (d) illustrative rate conditioned on "
           "humidity.", width=5.4*inch)
 
 P("<b>Variance &amp; limitations.</b> Estimator variance falls as 1/N (Fig.&nbsp;3), "
@@ -427,7 +436,8 @@ P("<b>Variance &amp; limitations.</b> Estimator variance falls as 1/N (Fig.&nbsp
   "one dimension (two-stream), which captures extinction and the forward/back "
   "competition but not full angular redistribution; the colour model omits ozone's "
   "Chappuis absorption and multiple-scattering skylight. None of these change the "
-  "qualitative probabilistic story.")
+  "qualitative probabilistic story. The weather distributions, correlations, and "
+  "score threshold are pedagogical assumptions rather than calibrated climatology.")
 
 # =========================================================================== #
 #  SECTION 5
@@ -441,18 +451,25 @@ P("Modeling the sunset as a stochastic process rather than a differential equati
   f"probability with a ~{h['red_to_blue_ratio']:.0f}:1 red-to-blue advantage at the "
   "horizon; the Monte&nbsp;Carlo simulator confirms these limits while empirically "
   "demonstrating the Law of Large Numbers and the CLT's N<sup>&minus;1/2</sup> error "
-  "law; the multiple-scattering random walk recovers both the warm direct beam and "
-  "the back-scattered blue sky; and the joint Weibull/Gaussian weather model turns "
-  "&ldquo;will there be an afterglow tonight?&rdquo; into a computable, "
-  "humidity-conditional probability. The spectral CIE extension closes the loop by "
-  "rendering the actual colour the mathematics predicts.")
+  "law; the multiple-scattering random walk illustrates wavelength-selective "
+  "transport; and the joint Weibull/Gaussian weather model demonstrates how an "
+  "explicit score responds to assumptions about humidity and aerosols. The CIE "
+  "extension closes the educational loop by rendering the direct-beam hue shift. "
+  "A real forecast remains a separate, data-calibration problem.")
+
+S.append(Paragraph("References", h2))
+P("Kasten, F. &amp; Young, A. T. (1989), <i>Revised optical air mass tables and "
+  "approximation formula</i>, Applied Optics 28(22), 4735&ndash;4738. Bodhaine, "
+  "B. A. et al. (1999), <i>On Rayleigh Optical Depth Calculations</i>, Journal "
+  "of Atmospheric and Oceanic Technology 16, 1854&ndash;1861. CIE 015:2018, "
+  "<i>Colorimetry, 4th Edition</i>.")
 
 P("<i>Declaration.</i> This is individual work. The probabilistic derivations, the "
   "Monte&nbsp;Carlo simulator and random-walk transport, the spectral CIE colour "
   "extension and joint weather model, and all writing and figures are my own work "
   "&mdash; John&nbsp;Douglas.")
-P("<i>Reproducibility.</i> All results derive from a single seeded run of "
-  "<font face='Courier'>sunset_afterglow.py</font> (a fixed NumPy PRNG seed); "
+P("<i>Reproducibility.</i> All results derive from deterministic, independent "
+  "experiment seeds in <font face='Courier'>sunset_afterglow.py</font>; "
   "this PDF is generated programmatically from the resulting "
   "<font face='Courier'>results.json</font> and figure set, so every number quoted "
   "above is traceable to the simulation.")
@@ -473,6 +490,8 @@ doc = SimpleDocTemplate(os.path.join(REPORT_DIR, "Sunset_Afterglow_Report.pdf"),
                         pagesize=letter, topMargin=0.8 * inch,
                         bottomMargin=0.8 * inch, leftMargin=0.9 * inch,
                         rightMargin=0.9 * inch,
-                        title="Stochastic Modeling of Sunset Afterglow Probability")
+                        title="Stochastic Modeling of Sunset Afterglow Probability",
+                        author="John Douglas",
+                        subject="Educational stochastic model of atmospheric transmission")
 doc.build(S, onFirstPage=footer, onLaterPages=footer)
 print("Report written to report/Sunset_Afterglow_Report.pdf")

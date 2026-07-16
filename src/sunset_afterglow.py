@@ -20,9 +20,10 @@ Author: (course project)
 
 import json
 import os
+from dataclasses import dataclass
 
-import numpy as np
 import matplotlib
+import numpy as np
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -31,7 +32,6 @@ from matplotlib import gridspec
 # --------------------------------------------------------------------------- #
 #  Global configuration
 # --------------------------------------------------------------------------- #
-RNG = np.random.default_rng(271828)            # reproducible master stream
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FIG_DIR = os.path.join(ROOT, "figures")
 os.makedirs(FIG_DIR, exist_ok=True)
@@ -54,6 +54,47 @@ BLUE_NM = 450.0
 
 RESULTS = {}                # collected scalars -> results.json
 
+EXPERIMENT_SEEDS = {
+    "exponential": 271828,
+    "beer_lambert": 271829,
+    "lln": 271830,
+    "random_walk": 271831,
+    "weather": 271832,
+}
+
+
+def experiment_rng(name):
+    """Return an independent, reproducible RNG for one experiment."""
+    return np.random.default_rng(EXPERIMENT_SEEDS[name])
+
+
+@dataclass(frozen=True)
+class Atmosphere:
+    """Parameters for the educational direct-beam model.
+
+    Aerosol attenuation follows the Angstrom power law.  This remains a compact
+    teaching model: it does not include cloud radiative transfer or ozone.
+    """
+
+    aerosol_optical_depth_550: float = 0.08
+    angstrom_exponent: float = 1.3
+
+    def __post_init__(self):
+        if self.aerosol_optical_depth_550 < 0:
+            raise ValueError("aerosol optical depth must be non-negative")
+        if self.angstrom_exponent < 0:
+            raise ValueError("Angstrom exponent must be non-negative")
+
+
+def relative_airmass(solar_elevation_deg):
+    """Kasten-Young relative optical airmass for elevation in [0, 90] degrees."""
+    elevation = np.clip(np.asarray(solar_elevation_deg, dtype=float), 0.0, 90.0)
+    zenith = 90.0 - elevation
+    return 1.0 / (
+        np.cos(np.deg2rad(zenith))
+        + 0.50572 * (96.07995 - zenith) ** -1.6364
+    )
+
 
 # --------------------------------------------------------------------------- #
 #  Physics  <->  probability translation
@@ -69,6 +110,17 @@ def rayleigh_optical_depth(wavelength_nm, airmass):
     return airmass * TAU_ZENITH_550 * (LAMBDA_REF / wavelength_nm) ** 4
 
 
+def total_optical_depth(wavelength_nm, airmass, atmosphere=Atmosphere()):
+    """Rayleigh plus aerosol optical depth for the direct solar beam."""
+    wavelength_nm = np.asarray(wavelength_nm, dtype=float)
+    aerosol = (
+        airmass
+        * atmosphere.aerosol_optical_depth_550
+        * (LAMBDA_REF / wavelength_nm) ** atmosphere.angstrom_exponent
+    )
+    return rayleigh_optical_depth(wavelength_nm, airmass) + aerosol
+
+
 def sample_free_path(rate, size, rng):
     """Inverse-transform sampling of the Exponential distribution.
 
@@ -76,6 +128,8 @@ def sample_free_path(rate, size, rng):
 
     Here ``rate`` is the collision density lambda; the mean free path is 1/rate.
     """
+    if rate <= 0:
+        raise ValueError("rate must be positive")
     u = rng.random(size)
     return -np.log(u) / rate
 
@@ -85,6 +139,7 @@ def sample_free_path(rate, size, rng):
 # --------------------------------------------------------------------------- #
 def figure_exponential_validation():
     """Histogram of inverse-transform samples vs the analytic Exponential PDF."""
+    rng = experiment_rng("exponential")
     n = 200_000
     # Two collision densities: dense (blue-like) and sparse (red-like) media.
     rates = {"Dense medium  (lambda = 2.0)": 2.0,
@@ -95,7 +150,7 @@ def figure_exponential_validation():
     fig, ax = plt.subplots(figsize=(7.2, 4.3))
     ks_report = {}
     for label, rate in rates.items():
-        x = sample_free_path(rate, n, RNG)
+        x = sample_free_path(rate, n, rng)
         ax.hist(x, bins=120, range=(0, 8), density=True, alpha=0.45,
                 color=colors[label], label=f"{label} -- samples")
         grid = np.linspace(0, 8, 400)
@@ -126,6 +181,7 @@ def figure_beer_lambert():
     A occurs iff the first free path X exceeds the path length, and since the
     path length equals tau in mean-free-path units, P(A) = P(X > tau) = e^{-tau}.
     """
+    rng = experiment_rng("beer_lambert")
     airmasses = np.linspace(1, 40, 200)
     tau_red = rayleigh_optical_depth(RED_NM, airmasses)
     tau_blue = rayleigh_optical_depth(BLUE_NM, airmasses)
@@ -139,8 +195,8 @@ def figure_beer_lambert():
     for m in mc_air:
         tr = rayleigh_optical_depth(RED_NM, m)
         tb = rayleigh_optical_depth(BLUE_NM, m)
-        xr = sample_free_path(1.0, n, RNG)     # unit-rate path in tau-units
-        xb = sample_free_path(1.0, n, RNG)
+        xr = sample_free_path(1.0, n, rng)     # unit-rate path in tau-units
+        xb = sample_free_path(1.0, n, rng)
         mc_red.append(np.mean(xr > tr))
         mc_blue.append(np.mean(xb > tb))
 
@@ -183,15 +239,16 @@ def figure_beer_lambert():
 #  Figure 3 -- Law of Large Numbers & Central Limit Theorem
 # --------------------------------------------------------------------------- #
 def figure_lln():
-    """Running MC estimator of P(A) converging to e^{-tau}, with CLT band."""
+    """Show LLN convergence and repeated-run RMSE scaling predicted by the CLT."""
+    rng = experiment_rng("lln")
     m = 38.0
     tau_r = rayleigh_optical_depth(RED_NM, m)
     tau_b = rayleigh_optical_depth(BLUE_NM, m)
     p_r, p_b = np.exp(-tau_r), np.exp(-tau_b)
 
     n = 50_000
-    xr = sample_free_path(1.0, n, RNG)
-    xb = sample_free_path(1.0, n, RNG)
+    xr = sample_free_path(1.0, n, rng)
+    xb = sample_free_path(1.0, n, rng)
     hit_r = (xr > tau_r).astype(float)
     hit_b = (xb > tau_b).astype(float)
     k = np.arange(1, n + 1)
@@ -219,19 +276,36 @@ def figure_lln():
                   "$e^{-\\tau}$")
     ax0.legend(frameon=False, fontsize=8, ncol=2, loc="upper right")
 
-    # Lower panel: |error| vs N on log-log with the 1/sqrt(N) reference line.
+    # Lower panel: repeated-run RMSE vs N.  Unlike one jagged running-error
+    # realization, this directly estimates the CLT's root-mean-square scaling.
     ax1 = fig.add_subplot(gs[1])
-    err_r = np.abs(run_r - p_r)
-    ax1.plot(k, err_r, color="#d62728", lw=0.8, alpha=0.7, label="|error| (red)")
-    ref = se_r * 1.0
-    ax1.plot(k, ref, color="k", lw=1.6, ls="--",
-             label="$\\sqrt{p(1-p)/N}\\ \\propto N^{-1/2}$ (CLT)")
+    sample_sizes = np.unique(np.logspace(2, 5, 18).astype(int))
+    replicates = 400
+    rmse_r, rmse_b = [], []
+    for size in sample_sizes:
+        estimates_r = rng.binomial(size, p_r, size=replicates) / size
+        estimates_b = rng.binomial(size, p_b, size=replicates) / size
+        rmse_r.append(np.sqrt(np.mean((estimates_r - p_r) ** 2)))
+        rmse_b.append(np.sqrt(np.mean((estimates_b - p_b) ** 2)))
+    rmse_r = np.asarray(rmse_r)
+    rmse_b = np.asarray(rmse_b)
+    theory_r = np.sqrt(p_r * (1 - p_r) / sample_sizes)
+    theory_b = np.sqrt(p_b * (1 - p_b) / sample_sizes)
+    slope_r = float(np.polyfit(np.log(sample_sizes), np.log(rmse_r), 1)[0])
+    slope_b = float(np.polyfit(np.log(sample_sizes), np.log(rmse_b), 1)[0])
+    ax1.plot(sample_sizes, rmse_r, "o-", ms=3, color="#d62728",
+             label=f"red repeated-run RMSE (slope {slope_r:.2f})")
+    ax1.plot(sample_sizes, rmse_b, "s-", ms=3, color="#1f77b4",
+             label=f"blue repeated-run RMSE (slope {slope_b:.2f})")
+    ax1.plot(sample_sizes, theory_r, color="#d62728", lw=1.2, ls="--")
+    ax1.plot(sample_sizes, theory_b, color="#1f77b4", lw=1.2, ls="--",
+             label="$\\sqrt{p(1-p)/N}\\ \\propto N^{-1/2}$")
     ax1.set_xscale("log")
     ax1.set_yscale("log")
     ax1.set_xlabel("number of simulated photons  $N$")
-    ax1.set_ylabel("absolute error")
+    ax1.set_ylabel("RMSE across 400 runs")
     ax1.legend(frameon=False, fontsize=8)
-    fig.tight_layout()
+    fig.subplots_adjust(left=0.12, right=0.97, bottom=0.10, top=0.92)
     fig.savefig(os.path.join(FIG_DIR, "fig3_lln.png"))
     plt.close(fig)
 
@@ -241,6 +315,9 @@ def figure_lln():
         "blue_final_estimate": float(run_b[-1]), "blue_limit": float(p_b),
         "red_final_abs_error": float(abs(run_r[-1] - p_r)),
         "blue_final_abs_error": float(abs(run_b[-1] - p_b)),
+        "rmse_replicates": replicates,
+        "red_rmse_loglog_slope": slope_r,
+        "blue_rmse_loglog_slope": slope_b,
     }
 
 
@@ -258,6 +335,10 @@ def random_walk_slab(tau_total, n_photons, albedo, p_forward, rng):
         otherwise scatter -- Bernoulli(p_forward) keeps/reverses direction.
     Returns counts of the three terminal outcomes.
     """
+    if tau_total < 0 or n_photons <= 0:
+        raise ValueError("tau_total must be non-negative and n_photons positive")
+    if not 0 <= albedo <= 1 or not 0 <= p_forward <= 1:
+        raise ValueError("albedo and p_forward must be probabilities")
     x = np.zeros(n_photons)
     mu = np.ones(n_photons)                       # +1 toward observer
     alive = np.ones(n_photons, dtype=bool)
@@ -295,6 +376,7 @@ def random_walk_slab(tau_total, n_photons, albedo, p_forward, rng):
 
 def figure_random_walk():
     """Outcome of the full collision decision tree for red vs blue photons."""
+    rng = experiment_rng("random_walk")
     m = 38.0
     n = 40_000
     albedo = 0.99            # single-scattering albedo (Rayleigh ~ no absorption)
@@ -304,7 +386,7 @@ def figure_random_walk():
     for name, wl, col in [("red 700 nm", RED_NM, "#d62728"),
                           ("blue 450 nm", BLUE_NM, "#1f77b4")]:
         tau = rayleigh_optical_depth(wl, m)
-        t, a, b, stuck = random_walk_slab(tau, n, albedo, p_forward, RNG)
+        t, a, b, stuck = random_walk_slab(tau, n, albedo, p_forward, rng)
         outcomes[name] = dict(tau=tau, transmitted=t, absorbed=a,
                               backscattered=b, stuck=stuck, color=col)
 
@@ -398,10 +480,13 @@ def _planck(wavelength_nm, temp=5778.0):
 
 
 def spectrum_to_srgb(spectrum):
-    """Convert a spectral power distribution (on _CIE_WL) to a clipped sRGB triple."""
-    X = np.trapezoid(spectrum * _CIE_XYZ[:, 0], _CIE_WL)
-    Y = np.trapezoid(spectrum * _CIE_XYZ[:, 1], _CIE_WL)
-    Z = np.trapezoid(spectrum * _CIE_XYZ[:, 2], _CIE_WL)
+    """Convert a spectral distribution to display-normalized illustrative sRGB."""
+    trapezoid = getattr(np, "trapezoid", None)
+    if trapezoid is None:  # NumPy 1.x compatibility
+        trapezoid = np.trapz
+    X = trapezoid(spectrum * _CIE_XYZ[:, 0], _CIE_WL)
+    Y = trapezoid(spectrum * _CIE_XYZ[:, 1], _CIE_WL)
+    Z = trapezoid(spectrum * _CIE_XYZ[:, 2], _CIE_WL)
     s = X + Y + Z
     if s <= 0:
         return np.zeros(3)
@@ -419,11 +504,31 @@ def spectrum_to_srgb(spectrum):
     return np.clip(rgb, 0, 1)
 
 
+def direct_beam_spectrum(solar_elevation_deg, atmosphere=Atmosphere()):
+    """Return wavelengths, normalized source/transmitted spectra, airmass, and RGB.
+
+    The RGB value is normalized for display and represents chromaticity, not
+    apparent brightness or the colour of the surrounding sky.
+    """
+    airmass = float(relative_airmass(solar_elevation_deg))
+    source = _planck(_CIE_WL)
+    transmitted = source * np.exp(
+        -total_optical_depth(_CIE_WL, airmass, atmosphere)
+    )
+    return {
+        "wavelength_nm": _CIE_WL.copy(),
+        "source": source / source.max(),
+        "transmitted": transmitted / source.max(),
+        "airmass": airmass,
+        "rgb": spectrum_to_srgb(transmitted),
+    }
+
+
 # --------------------------------------------------------------------------- #
 #  Figure 5 -- Full-spectrum transport -> rendered sunset colour  [optimisation]
 # --------------------------------------------------------------------------- #
 def figure_spectral_color():
-    """Transmit the solar spectrum through increasing airmass and render colour."""
+    """Transmit the solar spectrum through increasing airmass and render chromaticity."""
     source = _planck(_CIE_WL)
     airmasses = [0.0, 1.0, 5.0, 10.0, 20.0, 30.0, 38.0]
 
@@ -441,7 +546,7 @@ def figure_spectral_color():
     ax.set_xlabel("wavelength (nm)")
     ax.set_ylabel("transmitted spectral power\n(relative to source peak)")
     ax.set_title("Fig. 5  Spectral transmission $I_0(\\lambda)e^{-\\tau(\\lambda,m)}$ "
-                 "and the resulting sky colour")
+                 "and direct-beam chromaticity")
     ax.legend(frameon=False, fontsize=8, ncol=2, title="airmass")
     # colour the wavelength axis background faintly
     ax.set_xlim(380, 700)
@@ -454,7 +559,7 @@ def figure_spectral_color():
     axc.set_xlim(0, len(airmasses))
     axc.set_ylim(-0.25, 1)
     axc.axis("off")
-    axc.set_title("Rendered colour of the direct solar beam "
+    axc.set_title("Display-normalized chromaticity of the direct solar beam "
                   "(zenith -> horizon)", fontsize=10)
     fig.savefig(os.path.join(FIG_DIR, "fig5_spectral_color.png"),
                 bbox_inches="tight")
@@ -468,7 +573,7 @@ def figure_spectral_color():
 #  Figure 6 -- Joint [P,T,H] distribution + Weibull turbidity -> afterglow prob.
 # --------------------------------------------------------------------------- #
 def figure_joint_afterglow():
-    """Sample a correlated weather vector and estimate P(afterglow).
+    """Sample a correlated weather vector and evaluate an illustrative score.
 
     V = [P, T, H] is drawn from a multivariate normal (correlated: cold fronts
     raise pressure and lower temperature).  Atmospheric turbidity (aerosol
@@ -477,6 +582,7 @@ def figure_joint_afterglow():
     cloud deck to catch the light, but not so much that it is fully blocked --
     a joint threshold (a "band") on a derived redness index.
     """
+    rng = experiment_rng("weather")
     n = 200_000
     # correlated [P (hPa), T (degC), H (%)]
     mean = np.array([1015.0, 15.0, 60.0])
@@ -486,12 +592,12 @@ def figure_joint_afterglow():
                      [-0.5, 1.0, 0.3],
                      [-0.2, 0.3, 1.0]])
     cov = np.outer(std, std) * corr
-    V = RNG.multivariate_normal(mean, cov, size=n)
+    V = rng.multivariate_normal(mean, cov, size=n)
     P, T, H = V[:, 0], V[:, 1], np.clip(V[:, 2], 0, 100)
 
     # Weibull turbidity tau_aer (aerosol optical depth): shape k=1.8, scale=0.12
     k_shape, scale = 1.8, 0.12
-    tau_aer = scale * RNG.weibull(k_shape, size=n)
+    tau_aer = scale * rng.weibull(k_shape, size=n)
 
     # Air number density ~ P/T (ideal gas) modulates Rayleigh optical depth.
     Tk = T + 273.15
@@ -507,11 +613,17 @@ def figure_joint_afterglow():
     cloud = 1.0 / (1.0 + np.exp(-(H - 55) / 6.0))      # logistic in humidity
     afterglow_score = redness * cloud
 
-    # Afterglow event: score in a productive band (enough redness + cloud, not
-    # washed out by too much aerosol blocking everything).
-    lo = np.quantile(afterglow_score, 0.80)
-    event = afterglow_score >= lo
+    # This is a fixed educational decision rule, deliberately not a fitted
+    # real-world probability.  Keeping the threshold external prevents the
+    # event rate from being guaranteed by a sample quantile.
+    threshold = 0.10
+    event = afterglow_score >= threshold
     p_after = float(event.mean())
+    sensitivity_thresholds = np.array([0.08, 0.09, 0.10, 0.11, 0.12])
+    sensitivity = {
+        f"{value:.2f}": float(np.mean(afterglow_score >= value))
+        for value in sensitivity_thresholds
+    }
 
     fig = plt.figure(figsize=(8.6, 6.2))
     gs = gridspec.GridSpec(2, 2, hspace=0.62, wspace=0.32)
@@ -541,14 +653,14 @@ def figure_joint_afterglow():
     # (c) afterglow score distribution with threshold band
     ax2 = fig.add_subplot(gs[1, 0])
     ax2.hist(afterglow_score, bins=90, color="#c44e52", alpha=0.75)
-    ax2.axvline(lo, color="k", ls="--", lw=1.5,
-                label=f"threshold (P={p_after:.2f})")
+    ax2.axvline(threshold, color="k", ls="--", lw=1.5,
+                label=f"fixed teaching threshold (rate={p_after:.2f})")
     ax2.set_xlabel("afterglow score")
     ax2.set_ylabel("count")
     ax2.set_title("Fig. 6c  Afterglow score & threshold")
     ax2.legend(frameon=False, fontsize=8)
 
-    # (d) afterglow probability vs humidity (conditional probability)
+    # (d) illustrative event rate versus humidity
     ax3 = fig.add_subplot(gs[1, 1])
     hbins = np.linspace(10, 100, 19)
     centers, probs = [], []
@@ -559,8 +671,8 @@ def figure_joint_afterglow():
             probs.append(event[msk].mean())
     ax3.plot(centers, probs, "o-", color="#4c72b0")
     ax3.set_xlabel("relative humidity H (%)")
-    ax3.set_ylabel("$P(\\mathrm{afterglow}\\mid H)$")
-    ax3.set_title("Fig. 6d  Conditional probability\non humidity")
+    ax3.set_ylabel("illustrative event rate")
+    ax3.set_title("Fig. 6d  Score sensitivity\nto humidity")
     fig.savefig(os.path.join(FIG_DIR, "fig6_joint.png"), bbox_inches="tight")
     plt.close(fig)
 
@@ -568,10 +680,12 @@ def figure_joint_afterglow():
     hi_H = event[H > 75].mean() if (H > 75).any() else float("nan")
     lo_H = event[H < 45].mean() if (H < 45).any() else float("nan")
     RESULTS["joint"] = {
-        "p_afterglow": p_after,
+        "illustrative_event_rate": p_after,
+        "score_threshold": threshold,
+        "threshold_sensitivity": sensitivity,
         "weibull_shape": k_shape, "weibull_scale": scale,
-        "p_afterglow_given_high_humidity": float(hi_H),
-        "p_afterglow_given_low_humidity": float(lo_H),
+        "illustrative_rate_given_high_humidity": float(hi_H),
+        "illustrative_rate_given_low_humidity": float(lo_H),
         "corr_PT": -0.5,
     }
 
@@ -579,12 +693,18 @@ def figure_joint_afterglow():
 # --------------------------------------------------------------------------- #
 def main():
     print("Generating figures ...")
-    figure_exponential_validation(); print("  fig1 exponential  ok")
-    figure_beer_lambert();           print("  fig2 beer-lambert ok")
-    figure_lln();                    print("  fig3 LLN/CLT      ok")
-    figure_random_walk();            print("  fig4 random walk  ok")
-    figure_spectral_color();         print("  fig5 spectral col ok")
-    figure_joint_afterglow();        print("  fig6 joint dist   ok")
+    figure_exponential_validation()
+    print("  fig1 exponential  ok")
+    figure_beer_lambert()
+    print("  fig2 beer-lambert ok")
+    figure_lln()
+    print("  fig3 LLN/CLT      ok")
+    figure_random_walk()
+    print("  fig4 random walk  ok")
+    figure_spectral_color()
+    print("  fig5 spectral col ok")
+    figure_joint_afterglow()
+    print("  fig6 joint dist   ok")
 
     with open(os.path.join(ROOT, "results.json"), "w") as f:
         json.dump(RESULTS, f, indent=2)

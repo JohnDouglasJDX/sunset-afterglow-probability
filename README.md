@@ -1,96 +1,104 @@
-# 🌅 Stochastic Modeling of Sunset Afterglow Probability
+# 🌅 Stochastic Modeling of Sunset Afterglow
 
-> Why is the sunset red? This project answers it with **probability theory** instead of
-> deterministic physics — modeling each photon as a random walk through the atmosphere and
-> recovering the colour of the sky as an *expectation* over a Monte Carlo ensemble.
+An interactive probability lab for exploring why the direct solar beam reddens
+near the horizon. Photons receive Exponential free paths, wavelength-dependent
+survival follows Beer-Lambert attenuation, and Monte Carlo ensembles expose the
+Law of Large Numbers and Central Limit Theorem.
 
-A course project for **Probability Theory and Stochastic Processes**. Atmospheric Rayleigh
-scattering is reframed as a continuous-time stochastic process: a photon's free path is an
-**Exponential** random variable, wavelength-dependent extinction is a **conditional survival
-probability**, and the appearance of a vivid afterglow is a **joint-threshold event** on a
-correlated weather vector. A Monte Carlo simulator validates the analytic results, demonstrates
-the **Law of Large Numbers** and **Central Limit Theorem**, and — as an extension — renders the
-*actual perceived colour* of the setting Sun.
+> **Model boundary:** this is an educational atmospheric-transmission model, not
+> a forecast of whether tonight's sunset will be spectacular. The weather score
+> is an explicit sensitivity experiment whose distributions and threshold are
+> teaching assumptions, not parameters fitted to observations.
 
-📄 **[Read the full report (PDF)](report/Sunset_Afterglow_Report.pdf)**
+📄 **[Read the generated report](report/Sunset_Afterglow_Report.pdf)**
 
----
+## Interactive lab
 
-## ✨ Headline result: the colour of the sky, from probability alone
+Launch the Streamlit app and adjust solar elevation, aerosol optical depth,
+Ångström exponent, photon count, and random seed:
 
-Transmitting the full solar spectrum through increasing atmospheric path length and converting
-the survivors through the **CIE 1931** colour space reproduces the sunset's march from white to
-crimson — driven entirely by the probability that a photon of each wavelength survives the journey.
+```bash
+python -m pip install -r requirements.txt
+streamlit run app.py
+```
 
-![Spectral transmission and rendered sunset colour](figures/fig5_spectral_color.png)
+The lab updates analytic and Monte Carlo survival probabilities, the transmitted
+spectrum, and the display-normalized direct-beam chromaticity. It explicitly
+separates hue from apparent brightness and documents omitted physics.
 
-At the horizon the direct beam renders to sRGB ≈ `[1.00, 0.42, 0.00]` — a vivid orange-red.
-
----
-
-## 📐 The probabilistic model
+## What the model demonstrates
 
 | Phenomenon | Probabilistic object |
 |---|---|
-| Photon free path before a collision | **Exponential** r.v., sampled by inverse transform `X = −(1/λ)·ln U` |
-| Survival across path length `L` | `P(X > L) = e^{−τ}` (Beer–Lambert) |
-| Blue scatters more than red | `τ(λ) ∝ λ⁻⁴` → conditional survival `P(A│λ)` |
-| Multiple scattering | **Random walk / Markov chain** with a collision decision tree |
-| Atmospheric turbidity | **Weibull** random variable |
-| "Will there be an afterglow?" | **Joint** threshold on a correlated `[P, T, H]` vector |
+| Photon free path | Exponential random variable sampled by inverse transform |
+| Direct transmission | `P(X > τ) = exp(-τ)` |
+| Blue versus red attenuation | Rayleigh optical depth proportional to `λ⁻⁴` |
+| Aerosol attenuation | Ångström power law with adjustable optical depth |
+| Solar geometry | Kasten-Young relative airmass from solar elevation |
+| Multiple scattering | Educational 1-D two-stream Markov random walk |
+| Monte Carlo precision | Repeated-run RMSE proportional to `N⁻¹ᐟ²` |
+| Weather sensitivity | Fixed-threshold score over an assumed joint distribution |
 
-### Key numbers (from one seeded run)
+![Spectral transmission and direct-beam chromaticity](figures/fig5_spectral_color.png)
 
-- **Red vs blue survival at the horizon (airmass ≈ 38):** `P(red) = 0.245` vs `P(blue) = 2.7×10⁻⁴` — a **~917 : 1** advantage that *is* the reddening.
-- **LLN / CLT:** Monte Carlo estimators converge to `e^{−τ}` with error shrinking as `N^{−1/2}`.
-- **Conditional probability:** `P(afterglow │ humidity > 75%) = 0.68` vs ≈ `0.00` for dry air.
+At the geometric horizon, the Rayleigh-only teaching example gives much greater
+survival for 700 nm light than 450 nm light. This explains reddening of the
+direct disk; it does **not** by itself predict the radiance or appearance of the
+surrounding twilight sky.
 
----
-
-## 🖼️ Selected figures
-
-| Conditional survival (why the Sun reddens) | Law of Large Numbers + CLT |
-|---|---|
-| ![](figures/fig2_beer_lambert.png) | ![](figures/fig3_lln.png) |
-
-| Multiple-scattering random walk | Joint weather model & afterglow probability |
-|---|---|
-| ![](figures/fig4_random_walk.png) | ![](figures/fig6_joint.png) |
-
----
-
-## 🚀 Reproduce it
+## Reproduce the report
 
 ```bash
-pip install -r requirements.txt
-
-python src/sunset_afterglow.py   # runs the Monte Carlo, writes figures/ and results.json
-python src/build_report.py       # assembles report/Sunset_Afterglow_Report.pdf
+python src/sunset_afterglow.py
+python src/build_report.py
 ```
 
-Everything is driven by a single fixed PRNG seed, so results are fully reproducible, and the PDF
-is generated programmatically from `results.json` — every number in the report is traceable to
-the simulation.
+Each experiment uses its own deterministic random-number stream, so running one
+figure independently cannot perturb the results of another. Generated numerical
+results are written to `results.json` and consumed by the report builder.
 
-## 🗂️ Repository layout
+## Test and lint
 
+```bash
+python -m pip install -r requirements-dev.txt
+pytest
+ruff check .
 ```
-sunset-afterglow-probability/
+
+GitHub Actions runs the suite on Python 3.10 and 3.12 and verifies that the
+committed numerical results can be regenerated.
+
+## Repository layout
+
+```text
+├── app.py                     # interactive Streamlit probability lab
 ├── src/
-│   ├── sunset_afterglow.py   # Monte Carlo simulation engine + figure generation
-│   └── build_report.py       # builds the PDF report from results.json + figures/
-├── figures/                  # generated figures (PNG)
-├── report/
-│   └── Sunset_Afterglow_Report.pdf
-├── results.json              # numeric summary of one seeded run
-├── requirements.txt
-└── README.md
+│   ├── sunset_afterglow.py    # model, Monte Carlo experiments, figures
+│   └── build_report.py        # generated PDF report
+├── tests/                     # scientific invariants and reproducibility tests
+├── figures/                   # generated figures
+├── report/                    # generated report
+├── results.json               # seeded numerical summary
+└── .github/workflows/ci.yml   # lint, tests, artifact check
 ```
 
-## 📜 License
+## Scientific limitations
+
+- The random walk is one-dimensional and cannot predict angular sky radiance.
+- The chromaticity calculation normalizes brightness and omits ozone absorption,
+  clouds, multiple-scattered skylight, visual adaptation, and camera response.
+- Humidity is used as a deliberately explicit teaching proxy; it is not evidence
+  of predictive skill.
+- A real forecast requires labelled sunset observations matched to solar geometry,
+  aerosol measurements, cloud layers, visibility, and observer ratings, followed
+  by out-of-sample calibration checks such as Brier score and reliability plots.
+
+## References
+
+- Kasten, F. & Young, A. T. (1989), *Revised optical air mass tables and
+  approximation formula*, Applied Optics 28(22), 4735-4738.
+- Bodhaine, B. A. et al. (1999), *On Rayleigh Optical Depth Calculations*,
+  Journal of Atmospheric and Oceanic Technology 16, 1854-1861.
+- CIE 015:2018, *Colorimetry, 4th Edition*.
 
 Released under the [MIT License](LICENSE).
-
----
-
-*Author: John Douglas · individual coursework.*

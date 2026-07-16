@@ -1,0 +1,1 @@
+"""Sunset afterglow educational simulator."""
