@@ -26,8 +26,8 @@
     "red_final_abs_error": 0.00021658706984323262,
     "blue_final_abs_error": 5.222974214023196e-05,
     "rmse_replicates": 400,
-    "red_rmse_loglog_slope": -0.49272148042341923,
-    "blue_rmse_loglog_slope": -0.5205905891802054
+    "red_rmse_loglog_slope": -0.492721,
+    "blue_rmse_loglog_slope": -0.520591
   },
   "random_walk": {
     "red 700 nm": {

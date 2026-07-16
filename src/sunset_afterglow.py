@@ -316,8 +316,9 @@ def figure_lln():
         "red_final_abs_error": float(abs(run_r[-1] - p_r)),
         "blue_final_abs_error": float(abs(run_b[-1] - p_b)),
         "rmse_replicates": replicates,
-        "red_rmse_loglog_slope": slope_r,
-        "blue_rmse_loglog_slope": slope_b,
+        # Stabilize serialized results across BLAS/platform implementations.
+        "red_rmse_loglog_slope": round(slope_r, 6),
+        "blue_rmse_loglog_slope": round(slope_b, 6),
     }
 
 
