@@ -5,6 +5,7 @@ from src.sunset_afterglow import (
     BLUE_NM,
     RED_NM,
     Atmosphere,
+    canonicalize_results,
     direct_beam_spectrum,
     random_walk_slab,
     rayleigh_optical_depth,
@@ -56,3 +57,11 @@ def test_atmosphere_rejects_nonphysical_inputs():
         Atmosphere(-0.1, 1.0)
     with pytest.raises(ValueError):
         Atmosphere(0.1, -1.0)
+
+
+def test_result_serialization_is_platform_stable():
+    value = {"scalar": 2.0057652199937417, "nested": [1.0 / 3.0]}
+    assert canonicalize_results(value) == {
+        "scalar": 2.005765219994,
+        "nested": [0.333333333333],
+    }

@@ -68,6 +68,17 @@ def experiment_rng(name):
     return np.random.default_rng(EXPERIMENT_SEEDS[name])
 
 
+def canonicalize_results(value, decimal_places=12):
+    """Recursively make numeric artifacts stable across supported platforms."""
+    if isinstance(value, float):
+        return round(value, decimal_places)
+    if isinstance(value, dict):
+        return {key: canonicalize_results(item, decimal_places) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [canonicalize_results(item, decimal_places) for item in value]
+    return value
+
+
 @dataclass(frozen=True)
 class Atmosphere:
     """Parameters for the educational direct-beam model.
@@ -707,10 +718,11 @@ def main():
     figure_joint_afterglow()
     print("  fig6 joint dist   ok")
 
+    stable_results = canonicalize_results(RESULTS)
     with open(os.path.join(ROOT, "results.json"), "w") as f:
-        json.dump(RESULTS, f, indent=2)
+        json.dump(stable_results, f, indent=2)
     print("\nKey results:")
-    print(json.dumps(RESULTS, indent=2))
+    print(json.dumps(stable_results, indent=2))
 
 
 if __name__ == "__main__":

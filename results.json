@@ -1,44 +1,44 @@
 {
   "exp_mean_check": {
     "2.0": [
-      0.49834703183350393,
+      0.498347031834,
       0.5
     ],
     "0.5": [
-      2.0057652199937417,
+      2.005765219994,
       2.0
     ]
   },
   "horizon": {
     "airmass": 38.0,
-    "tau_red": 1.404798157017909,
-    "tau_blue": 8.225381191891483,
-    "surv_red": 0.24541658706984323,
-    "surv_blue": 0.00026777025785976806,
-    "red_to_blue_ratio": 916.5192170011969
+    "tau_red": 1.404798157018,
+    "tau_blue": 8.225381191891,
+    "surv_red": 0.24541658707,
+    "surv_blue": 0.000267770258,
+    "red_to_blue_ratio": 916.519217001197
   },
   "lln": {
     "N": 50000,
     "red_final_estimate": 0.2452,
-    "red_limit": 0.24541658706984323,
+    "red_limit": 0.24541658707,
     "blue_final_estimate": 0.00032,
-    "blue_limit": 0.00026777025785976806,
-    "red_final_abs_error": 0.00021658706984323262,
-    "blue_final_abs_error": 5.222974214023196e-05,
+    "blue_limit": 0.000267770258,
+    "red_final_abs_error": 0.00021658707,
+    "blue_final_abs_error": 5.2229742e-05,
     "rmse_replicates": 400,
     "red_rmse_loglog_slope": -0.492721,
     "blue_rmse_loglog_slope": -0.520591
   },
   "random_walk": {
     "red 700 nm": {
-      "tau": 1.404798157017909,
+      "tau": 1.404798157018,
       "transmitted": 23378,
       "absorbed": 563,
       "backscattered": 16059,
       "stuck": 0
     },
     "blue 450 nm": {
-      "tau": 8.225381191891483,
+      "tau": 8.225381191891,
       "transmitted": 6718,
       "absorbed": 2958,
       "backscattered": 30324,
@@ -64,7 +64,7 @@
     },
     "weibull_shape": 1.8,
     "weibull_scale": 0.12,
-    "illustrative_rate_given_high_humidity": 0.9581228396703004,
+    "illustrative_rate_given_high_humidity": 0.95812283967,
     "illustrative_rate_given_low_humidity": 0.0,
     "corr_PT": -0.5
   }
